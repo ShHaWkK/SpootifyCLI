@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= title %></title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="dashboard-page">
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-brand">
+            <i class="fab fa-spotify"></i>
+            <span>Spootify Web</span>
+        </div>
+        
+        <div class="nav-user">
+            <% if (user) { %>
+                <div class="user-info">
+                    <% if (user.images && user.images.length > 0) { %>
+                        <img src="<%= user.images[0].url %>" alt="Avatar" class="user-avatar">
+                    <% } else { %>
+                        <div class="user-avatar-placeholder">
+                            <i class="fas fa-user"></i>
+                        </div>
+                    <% } %>
+                    <span class="user-name"><%= user.display_name || user.id %></span>
+                </div>
+            <% } %>
+            <a href="/logout" class="logout-btn">
+                <i class="fas fa-sign-out-alt"></i>
+            </a>
+        </div>
+    </nav>
+
+    <div class="dashboard-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-section">
+                <h3><i class="fas fa-home"></i> Accueil</h3>
+                <ul class="sidebar-menu">
+                    <li class="active"><a href="#" data-section="player"><i class="fas fa-play"></i> Lecteur</a></li>
+                    <li><a href="#" data-section="search"><i class="fas fa-search"></i> Recherche</a></li>
+                    <li><a href="#" data-section="playlists"><i class="fas fa-list"></i> Playlists</a></li>
+                </ul>
+            </div>
+            
+            <div class="sidebar-section">
+                <h3><i class="fas fa-volume-up"></i> Appareils</h3>
+                <div id="devices-list" class="devices-list">
+                    <div class="loading">Chargement...</div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Player Section -->
+            <section id="player-section" class="content-section active">
+                <div class="player-container">
+                    <!-- Current Track Info -->
+                    <div class="current-track">
+                        <div class="track-image">
+                            <img id="track-image" src="/images/default-album.png" alt="Album">
+                            <div class="track-image-overlay">
+                                <i class="fas fa-music"></i>
+                            </div>
+                        </div>
+                        
+                        <div class="track-info">
+                            <h2 id="track-name">Aucune piste en cours</h2>
+                            <p id="track-artist">Sélectionnez une piste pour commencer</p>
+                            <p id="track-album"></p>
+                        </div>
+                        
+                        <div class="track-actions">
+                            <button id="like-btn" class="action-btn" title="Aimer">
+                                <i class="far fa-heart"></i>
+                            </button>
+                            <button id="share-btn" class="action-btn" title="Partager">
+                                <i class="fas fa-share-alt"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Player Controls -->
+                    <div class="player-controls">
+                        <div class="control-buttons">
+                            <button id="shuffle-btn" class="control-btn" title="Lecture aléatoire">
+                                <i class="fas fa-random"></i>
+                            </button>
+                            <button id="prev-btn" class="control-btn" title="Précédent">
+                                <i class="fas fa-step-backward"></i>
+                            </button>
+                            <button id="play-pause-btn" class="control-btn play-btn" title="Lecture/Pause">
+                                <i class="fas fa-play"></i>
+                            </button>
+                            <button id="next-btn" class="control-btn" title="Suivant">
+                                <i class="fas fa-step-forward"></i>
+                            </button>
+                            <button id="repeat-btn" class="control-btn" title="Répéter">
+                                <i class="fas fa-redo"></i>
+                            </button>
+                        </div>
+                        
+                        <div class="progress-container">
+                            <span id="current-time">0:00</span>
+                            <div class="progress-bar">
+                                <div id="progress-fill" class="progress-fill"></div>
+                                <input type="range" id="progress-slider" class="progress-slider" min="0" max="100" value="0">
+                            </div>
+                            <span id="total-time">0:00</span>
+                        </div>
+                        
+                        <div class="volume-container">
+                            <button id="volume-btn" class="control-btn" title="Volume">
+                                <i class="fas fa-volume-up"></i>
+                            </button>
+                            <div class="volume-slider-container">
+                                <input type="range" id="volume-slider" class="volume-slider" min="0" max="100" value="50">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Search Section -->
+            <section id="search-section" class="content-section">
+                <div class="search-container">
+                    <div class="search-header">
+                        <h2><i class="fas fa-search"></i> Recherche</h2>
+                        <div class="search-input-container">
+                            <input type="text" id="search-input" placeholder="Rechercher des pistes, artistes, albums...">
+                            <button id="search-btn">
+                                <i class="fas fa-search"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="search-filters">
+                        <button class="filter-btn active" data-type="track">Pistes</button>
+                        <button class="filter-btn" data-type="artist">Artistes</button>
+                        <button class="filter-btn" data-type="album">Albums</button>
+                        <button class="filter-btn" data-type="playlist">Playlists</button>
+                    </div>
+                    
+                    <div id="search-results" class="search-results">
+                        <div class="search-placeholder">
+                            <i class="fas fa-search"></i>
+                            <p>Recherchez votre musique préférée</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Playlists Section -->
+            <section id="playlists-section" class="content-section">
+                <div class="playlists-container">
+                    <div class="playlists-header">
+                        <h2><i class="fas fa-list"></i> Mes Playlists</h2>
+                        <button id="create-playlist-btn" class="create-btn">
+                            <i class="fas fa-plus"></i> Créer une playlist
+                        </button>
+                    </div>
+                    
+                    <div id="playlists-grid" class="playlists-grid">
+                        <div class="loading">Chargement des playlists...</div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Status Bar -->
+    <div class="status-bar">
+        <div class="status-info">
+            <span id="connection-status">
+                <i class="fas fa-circle connected"></i>
+                Connecté à Spotify
+            </span>
+        </div>
+        <div class="status-actions">
+            <button id="refresh-btn" class="status-btn" title="Actualiser">
+                <i class="fas fa-sync-alt"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <div id="create-playlist-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Créer une nouvelle playlist</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="create-playlist-form">
+                    <div class="form-group">
+                        <label for="playlist-name">Nom de la playlist</label>
+                        <input type="text" id="playlist-name" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="playlist-description">Description (optionnel)</label>
+                        <textarea id="playlist-description" rows="3"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="playlist-public">
+                            Playlist publique
+                        </label>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Annuler</button>
+                <button type="submit" form="create-playlist-form" class="btn btn-primary">Créer</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/js/app.js"></script>
+</body>
+</html>
