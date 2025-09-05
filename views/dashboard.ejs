@@ -604,6 +604,10 @@
     <audio id="local-audio-player" preload="metadata"></audio>
 
     <script src="/socket.io/socket.io.js"></script>
+    <script src="https://sdk.scdn.co/spotify-player.js"></script>
+    <script>
+        window.spotifyToken = "<%= spotifyToken || '' %>";
+    </script>
     <script src="/js/app.js"></script>
 </body>
 </html>
