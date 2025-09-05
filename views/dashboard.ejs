@@ -285,6 +285,10 @@
                             <i class="fas fa-headphones"></i>
                             Lecteur Web
                         </button>
+                        <button class="premium-btn quick-play" id="quick-play-liked-btn">
+                            <i class="fas fa-bolt"></i>
+                            Lecture Rapide
+                        </button>
                         <button class="premium-btn secondary" id="shuffle-liked-btn">
                             <i class="fas fa-random"></i>
                             Aléatoire
@@ -293,6 +297,21 @@
                             <i class="fas fa-microphone-alt"></i>
                             Paroles
                         </button>
+                        <button class="premium-btn" id="load-more-liked-btn" style="display: none;">
+                            <i class="fas fa-plus"></i>
+                            Charger plus
+                        </button>
+                    </div>
+                    
+                    <!-- Barre de recherche pour les titres likés -->
+                    <div class="liked-search-container" style="margin: 20px 0;">
+                        <div class="search-input-container">
+                            <i class="fas fa-search"></i>
+                            <input type="text" id="liked-search-input" placeholder="Rechercher dans vos titres likés..." class="liked-search-input">
+                            <button class="clear-search-btn" id="clear-liked-search" style="display: none;">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>
                 

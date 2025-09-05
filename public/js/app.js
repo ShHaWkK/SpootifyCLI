@@ -30,6 +30,10 @@ class SpootifyApp {
         this.initializeSocket();
         this.setupEventListeners();
         this.loadLocalLibrary();
+        
+        // Vérifier l'authentification avant de charger les données Spotify
+        this.checkAuthenticationStatus();
+        
         this.loadLikedTracks(); // Charger les titres likés au démarrage
         this.updateUI();
         this.showSection('home');
@@ -44,6 +48,26 @@ class SpootifyApp {
         this.initWebPlayer();
         
         console.log('🎵 Spootify Web App initialized');
+    }
+
+    // Vérification de l'authentification
+    async checkAuthenticationStatus() {
+        try {
+            const response = await fetch('/api/player/status');
+            if (response.status === 401) {
+                this.showNotification('⚠️ Vous n\'êtes pas connecté à Spotify. Certaines fonctionnalités seront limitées.', 'warning');
+                console.log('❌ User not authenticated with Spotify');
+                return false;
+            } else if (response.ok) {
+                this.showNotification('✅ Connecté à Spotify avec succès', 'success');
+                console.log('✅ User authenticated with Spotify');
+                return true;
+            }
+        } catch (error) {
+            console.error('❌ Error checking authentication:', error);
+            this.showNotification('⚠️ Impossible de vérifier la connexion Spotify', 'warning');
+            return false;
+        }
     }
 
     // Socket.IO Configuration
@@ -135,16 +159,16 @@ class SpootifyApp {
 
         // Liked tracks buttons
         const playLikedBtn = document.getElementById('play-liked-btn');
-        const playLikedWebBtn = document.getElementById('play-liked-web-btn');
+        const quickPlayLikedBtn = document.getElementById('quick-play-liked-btn');
         const shuffleLikedBtn = document.getElementById('shuffle-liked-btn');
         const refreshRecentBtn = document.getElementById('refresh-recent-btn');
-        
+
         if (playLikedBtn) {
-            playLikedBtn.addEventListener('click', () => this.playLikedTracks());
+            playLikedBtn.addEventListener('click', () => this.playLikedTracksWithWebPlayer());
         }
         
-        if (playLikedWebBtn) {
-            playLikedWebBtn.addEventListener('click', () => this.playLikedTracksWithWebPlayer());
+        if (quickPlayLikedBtn) {
+            quickPlayLikedBtn.addEventListener('click', () => this.quickPlayLikedTracks());
         }
         
         if (shuffleLikedBtn) {
@@ -175,6 +199,38 @@ class SpootifyApp {
                 }
             });
         });
+        
+        // Recherche dans les titres likés
+        const likedSearchInput = document.getElementById('liked-search-input');
+        const clearLikedSearch = document.getElementById('clear-liked-search');
+        const loadMoreLikedBtn = document.getElementById('load-more-liked-btn');
+        
+        if (likedSearchInput) {
+            likedSearchInput.addEventListener('input', (e) => {
+                this.searchLikedTracks(e.target.value);
+                const clearBtn = document.getElementById('clear-liked-search');
+                if (clearBtn) {
+                    clearBtn.style.display = e.target.value ? 'block' : 'none';
+                }
+            });
+        }
+        
+        if (clearLikedSearch) {
+            clearLikedSearch.addEventListener('click', () => {
+                const searchInput = document.getElementById('liked-search-input');
+                if (searchInput) {
+                    searchInput.value = '';
+                    this.searchLikedTracks('');
+                    clearLikedSearch.style.display = 'none';
+                }
+            });
+        }
+        
+        if (loadMoreLikedBtn) {
+            loadMoreLikedBtn.addEventListener('click', () => {
+                this.loadMoreLikedTracks();
+            });
+        }
         
         // Help button
         const helpBtn = document.getElementById('help-btn');
@@ -1549,18 +1605,57 @@ class SpootifyApp {
     // Liked Tracks Functions
     async loadLikedTracks() {
         try {
-            const response = await fetch('/api/player/liked-tracks?limit=50&offset=0');
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+            this.showNotification('📥 Chargement des titres likés...', 'info');
+            
+            let allTracks = [];
+            let offset = 0;
+            const limit = 50;
+            let hasMore = true;
+            let isFirstLoad = true;
+            
+            while (hasMore) {
+                const response = await fetch(`/api/player/liked-tracks?limit=${limit}&offset=${offset}`);
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        this.showNotification('🔐 Session expirée. Veuillez vous reconnecter à Spotify.', 'warning');
+                        setTimeout(() => {
+                            window.location.href = '/auth/login';
+                        }, 2000);
+                        return;
+                    }
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                allTracks = allTracks.concat(data.items);
+                
+                // Afficher les premiers résultats immédiatement
+                if (isFirstLoad) {
+                    this.likedTracksData = allTracks;
+                    this.displayLikedTracks(allTracks);
+                    this.showNotification(`✅ ${allTracks.length} titres chargés (chargement en cours...)`, 'success');
+                    isFirstLoad = false;
+                }
+                
+                // Vérifier s'il y a plus de titres à charger
+                hasMore = data.items.length === limit && allTracks.length < data.total;
+                offset += limit;
+                
+                // Continuer le chargement en arrière-plan
+                if (hasMore) {
+                    // Petite pause pour ne pas surcharger l'API
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
             }
-            const data = await response.json();
-            // Stocker les données pour utilisation ultérieure
-            this.likedTracksData = data.items;
-            this.displayLikedTracks(data.items);
-            console.log('✅ Liked tracks loaded:', data.items.length);
+            
+            // Mise à jour finale
+            this.likedTracksData = allTracks;
+            this.displayLikedTracks(allTracks);
+            this.showNotification(`✅ ${allTracks.length} titres likés chargés !`, 'success');
+            console.log('✅ All liked tracks loaded:', allTracks.length);
         } catch (error) {
             console.error('❌ Error loading liked tracks:', error);
-            this.showNotification('Erreur lors du chargement des titres likés', 'error');
+            this.showNotification('Erreur lors du chargement des titres likés. Vérifiez votre connexion Spotify.', 'error');
         }
     }
 
@@ -1728,11 +1823,19 @@ class SpootifyApp {
                     }
                     return;
                 } else {
-                    this.showNotification('❌ Aperçu non disponible pour ce titre', 'warning');
+                    // Proposer des alternatives pour les titres sans aperçu
+                    await this.findAlternativeForTrack(track.track);
                     return;
                 }
             }
-            
+
+            // Vérifier d'abord s'il y a un appareil Spotify actif
+            if (!(await this.hasActiveSpotifyDevice())) {
+                this.showNotification('🔄 Spotify non disponible. Recherche d\'une alternative locale...', 'warning');
+                await this.tryPlayLocalAlternative(uri);
+                return;
+            }
+
             // Pour les autres titres, essayer Spotify d'abord
             const response = await fetch('/api/player/play', {
                 method: 'POST',
@@ -1741,22 +1844,22 @@ class SpootifyApp {
                 },
                 body: JSON.stringify({ uris: [uri] })
             });
-            
+
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
-                
+
                 if (response.status === 404) {
                     this.showNotification('🔄 Spotify non disponible. Recherche d\'une alternative locale...', 'warning');
                     await this.tryPlayLocalAlternative(uri);
                     return;
                 }
-                
+
                 if (response.status === 401) {
                     this.showNotification('❌ Session expirée. Reconnexion nécessaire.', 'error');
                     window.location.href = '/auth/spotify';
                     return;
                 }
-                
+
                 throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
             }
             
@@ -1959,6 +2062,18 @@ class SpootifyApp {
             wp.audio.src = `/api/local/stream/${track.id}`;
         }
         
+        // Gérer les erreurs de chargement audio
+        wp.audio.onerror = () => {
+            console.warn('Erreur de chargement audio pour:', track.title);
+            this.showNotification(`⏭️ Aperçu indisponible, passage au suivant...`, 'warning');
+            // Passer automatiquement au titre suivant après 1 seconde
+            setTimeout(() => {
+                if (this.likedTracksPlaylist && this.likedTracksPlaylist.length > 1) {
+                    this.playNextLikedTrack();
+                }
+            }, 1000);
+        };
+        
         // Mettre à jour l'interface
         if (wp.title) wp.title.textContent = track.title || 'Titre inconnu';
         if (wp.artist) wp.artist.textContent = track.artist || 'Artiste inconnu';
@@ -2102,26 +2217,86 @@ class SpootifyApp {
 
     async playLikedTracksWithWebPlayer() {
         try {
-            const response = await fetch('/api/player/liked-tracks/previews?limit=50');
-            if (!response.ok) {
-                if (response.status === 401) {
-                    this.showNotification('🔐 Vous devez vous connecter à Spotify pour accéder à vos titres likés', 'error');
-                    // Rediriger vers la page de connexion Spotify
+            // Vérifier d'abord si l'utilisateur est connecté en testant une route simple
+            const authCheck = await fetch('/api/player/status');
+            if (authCheck.status === 401) {
+                this.showNotification('🔐 Session expirée. Redirection vers la connexion...', 'warning');
+                setTimeout(() => {
                     window.location.href = '/auth/login';
-                    return;
-                }
-                throw new Error(`Erreur lors du chargement: ${response.status}`);
-            }
-            
-            const data = await response.json();
-            
-            if (!data.tracks || data.tracks.length === 0) {
-                this.showNotification('❌ Aucun aperçu disponible pour vos titres likés', 'error');
+                }, 2000);
                 return;
             }
             
-            // Stocker la playlist des titres likés
-            this.likedTracksPlaylist = data.tracks.map(track => ({
+            this.showNotification('🎵 Recherche des aperçus disponibles...', 'info');
+            
+            // Charger le premier lot d'aperçus rapidement
+            let allTracksWithPreviews = [];
+            let offset = 0;
+            const limit = 50;
+            let hasMore = true;
+            let isFirstBatch = true;
+            
+            while (hasMore) {
+                const response = await fetch(`/api/player/liked-tracks/previews?limit=${limit}&offset=${offset}`);
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        this.showNotification('🔐 Session expirée. Redirection vers la connexion...', 'warning');
+                        setTimeout(() => {
+                            window.location.href = '/auth/login';
+                        }, 2000);
+                        return;
+                    }
+                    throw new Error(`Erreur lors du chargement: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                allTracksWithPreviews = allTracksWithPreviews.concat(data.tracks);
+                
+                // Commencer la lecture dès le premier lot d'aperçus trouvé
+                if (isFirstBatch && allTracksWithPreviews.length > 0) {
+                    this.likedTracksPlaylist = allTracksWithPreviews.map(track => ({
+                        id: track.id,
+                        title: track.name,
+                        artist: track.artists,
+                        album: track.album.name,
+                        duration: Math.floor(track.duration_ms / 1000),
+                        url: track.preview_url,
+                        cover: track.album.images && track.album.images.length > 0 
+                            ? track.album.images[0].url 
+                            : '/images/default-cover.jpg',
+                        is_spotify_preview: true,
+                        uri: track.uri
+                    }));
+                    
+                    this.currentLikedTrackIndex = 0;
+                    
+                    // Jouer la première piste immédiatement
+                    const firstTrack = this.likedTracksPlaylist[0];
+                    this.webPlayerLoadTrack(firstTrack);
+                    this.showWebPlayer();
+                    
+                    this.showNotification(`🎵 Lecture démarrée ! (${allTracksWithPreviews.length} aperçus, chargement en cours...)`, 'success');
+                    isFirstBatch = false;
+                }
+                
+                // Vérifier s'il y a plus de titres à charger
+                hasMore = data.tracks.length === limit;
+                offset += limit;
+                
+                // Continuer le chargement en arrière-plan
+                if (hasMore) {
+                    // Petite pause pour ne pas surcharger l'API
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                }
+            }
+            
+            if (allTracksWithPreviews.length === 0) {
+                this.showNotification('❌ Aucun aperçu disponible pour vos titres likés. Essayez de vous reconnecter à Spotify.', 'error');
+                return;
+            }
+            
+            // Mise à jour finale de la playlist
+            this.likedTracksPlaylist = allTracksWithPreviews.map(track => ({
                 id: track.id,
                 title: track.name,
                 artist: track.artists,
@@ -2135,14 +2310,7 @@ class SpootifyApp {
                 uri: track.uri
             }));
             
-            this.currentLikedTrackIndex = 0;
-            
-            // Jouer la première piste
-            const firstTrack = this.likedTracksPlaylist[0];
-            this.webPlayerLoadTrack(firstTrack);
-            this.showWebPlayer();
-            
-            this.showNotification(`🎵 Lecture des titres likés (${data.tracks.length} aperçus disponibles sur ${data.total_liked} titres)`, 'success');
+            this.showNotification(`🎵 ${allTracksWithPreviews.length} aperçus chargés et prêts !`, 'success');
             
         } catch (error) {
             console.error('❌ Error playing liked tracks with web player:', error);
@@ -2194,6 +2362,232 @@ class SpootifyApp {
         
         // Otherwise use Spotify controls
         await this.togglePlayback();
+    }
+
+    // Recherche dans les titres likés
+    searchLikedTracks(query) {
+        const likedTracksContainer = document.getElementById('liked-tracks');
+        if (!likedTracksContainer) return;
+
+        const trackItems = likedTracksContainer.querySelectorAll('.premium-track-item');
+        
+        if (!query.trim()) {
+            // Afficher tous les titres
+            trackItems.forEach(item => {
+                item.classList.remove('search-hidden', 'search-highlight');
+                item.style.display = '';
+            });
+            return;
+        }
+
+        const searchTerm = query.toLowerCase().trim();
+        let visibleCount = 0;
+
+        trackItems.forEach(item => {
+            const title = item.querySelector('.track-title')?.textContent?.toLowerCase() || '';
+            const artist = item.querySelector('.track-artist')?.textContent?.toLowerCase() || '';
+            const album = item.querySelector('.track-album')?.textContent?.toLowerCase() || '';
+            
+            const matches = title.includes(searchTerm) || 
+                          artist.includes(searchTerm) || 
+                          album.includes(searchTerm);
+            
+            if (matches) {
+                item.classList.remove('search-hidden');
+                item.classList.add('search-highlight');
+                item.style.display = '';
+                visibleCount++;
+            } else {
+                item.classList.add('search-hidden');
+                item.classList.remove('search-highlight');
+                item.style.display = 'none';
+            }
+        });
+
+        // Afficher le nombre de résultats
+        this.showNotification(`🔍 ${visibleCount} titre(s) trouvé(s)`, 'info');
+    }
+
+    // Charger plus de titres likés (fonction pour extension future)
+    async loadMoreLikedTracks() {
+        try {
+            this.showNotification('🔄 Chargement de titres supplémentaires...', 'info');
+            
+            // Pour l'instant, on recharge tous les titres
+            // Cette fonction peut être étendue pour implémenter un vrai "load more"
+            await this.loadLikedTracks();
+            
+            this.showNotification('✅ Titres actualisés', 'success');
+        } catch (error) {
+            console.error('❌ Error loading more liked tracks:', error);
+            this.showNotification('❌ Erreur lors du chargement', 'error');
+        }
+    }
+
+    // Lecture rapide des titres likés
+    async quickPlayLikedTracks() {
+        try {
+            this.showNotification('🚀 Démarrage rapide...', 'info');
+            
+            // Vérifier s'il y a déjà des titres chargés
+            const likedTracksContainer = document.getElementById('liked-tracks');
+            const existingTracks = likedTracksContainer.querySelectorAll('.track-item');
+            
+            if (existingTracks.length > 0) {
+                // Utiliser les titres déjà affichés
+                const tracks = Array.from(existingTracks).map(trackElement => {
+                    const uri = trackElement.dataset.uri;
+                    const name = trackElement.querySelector('.track-name').textContent;
+                    const artist = trackElement.querySelector('.track-artist').textContent;
+                    const previewUrl = trackElement.dataset.preview;
+                    
+                    return {
+                        uri,
+                        name,
+                        artists: [{ name: artist }],
+                        preview_url: previewUrl
+                    };
+                });
+                
+                // Filtrer les titres avec aperçu
+                const tracksWithPreview = tracks.filter(track => track.preview_url);
+                
+                if (tracksWithPreview.length > 0) {
+                    this.likedTracksWithPreviews = tracksWithPreview;
+                    this.currentLikedTrackIndex = 0;
+                    this.webPlayerLoadTrack(tracksWithPreview[0]);
+                    this.showWebPlayer();
+                    this.showNotification(`🎵 Lecture rapide démarrée ! ${tracksWithPreview.length} titres avec aperçu`, 'success');
+                } else {
+                    this.showNotification('🎵 Aucun aperçu dans les titres affichés. Chargement de recommandations...', 'info');
+                    await this.loadRecommendations();
+                }
+            } else {
+                // Charger rapidement les premiers titres
+                const response = await fetch('/api/player/liked-tracks/previews?limit=20');
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+                const data = await response.json();
+                if (data.tracks && data.tracks.length > 0) {
+                    this.likedTracksWithPreviews = data.tracks;
+                    this.currentLikedTrackIndex = 0;
+                    this.webPlayerLoadTrack(data.tracks[0]);
+                    this.showWebPlayer();
+                    this.showNotification(`🎵 Lecture rapide démarrée ! ${data.tracks.length} titres disponibles`, 'success');
+                } else {
+                    this.showNotification('🎵 Aucun titre avec aperçu trouvé. Chargement de recommandations...', 'info');
+                    await this.loadRecommendations();
+                }
+            }
+        } catch (error) {
+            console.error('Erreur lors du démarrage rapide:', error);
+            if (error.message.includes('401')) {
+                this.showNotification('🔐 Session expirée. Veuillez vous reconnecter.', 'error');
+            } else {
+                this.showNotification('❌ Erreur lors du démarrage rapide', 'error');
+            }
+        }
+    }
+
+    // Trouver des alternatives pour un titre sans aperçu
+    async findAlternativeForTrack(track) {
+        try {
+            this.showNotification('🔍 Recherche d\'alternatives avec aperçu...', 'info');
+            
+            const trackName = track.name;
+            const artistName = track.artists[0]?.name || '';
+            
+            // Rechercher des alternatives
+            const response = await fetch(`/api/player/liked-tracks/alternatives?trackName=${encodeURIComponent(trackName)}&artistName=${encodeURIComponent(artistName)}`);
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            
+            const data = await response.json();
+            
+            if (data.alternatives && data.alternatives.length > 0) {
+                // Jouer la meilleure alternative
+                const bestAlternative = data.alternatives[0];
+                this.showNotification(`🎵 Alternative trouvée: ${bestAlternative.name} - ${bestAlternative.artists}`, 'success');
+                
+                // Créer une playlist temporaire avec l'alternative
+                this.likedTracksPlaylist = [{
+                    id: bestAlternative.id,
+                    title: bestAlternative.name,
+                    artist: bestAlternative.artists,
+                    album: bestAlternative.album.name,
+                    duration: Math.floor(bestAlternative.duration_ms / 1000),
+                    url: bestAlternative.preview_url,
+                    cover: bestAlternative.album.images && bestAlternative.album.images.length > 0 
+                        ? bestAlternative.album.images[0].url 
+                        : '/images/default-cover.jpg',
+                    is_spotify_preview: true,
+                    uri: bestAlternative.uri
+                }];
+                
+                this.currentLikedTrackIndex = 0;
+                this.webPlayerLoadTrack(this.likedTracksPlaylist[0]);
+                this.showWebPlayer();
+            } else {
+                // Aucune alternative trouvée, proposer des recommandations
+                this.showNotification('🎵 Aucune alternative trouvée. Chargement de recommandations...', 'info');
+                await this.loadRecommendations();
+            }
+            
+        } catch (error) {
+            console.error('Erreur lors de la recherche d\'alternatives:', error);
+            this.showNotification('❌ Impossible de trouver des alternatives. Essayez les recommandations.', 'warning');
+            await this.loadRecommendations();
+        }
+    }
+
+    // Charger des recommandations basées sur les titres likés
+    async loadRecommendations() {
+        try {
+            const response = await fetch('/api/player/liked-tracks/recommendations?limit=10');
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            
+            const data = await response.json();
+            
+            if (data.tracks && data.tracks.length > 0) {
+                this.showNotification(`🎵 ${data.tracks.length} recommandations trouvées !`, 'success');
+                
+                // Créer une playlist avec les recommandations
+                this.likedTracksPlaylist = data.tracks.map(track => ({
+                    id: track.id,
+                    title: track.name,
+                    artist: track.artists,
+                    album: track.album.name,
+                    duration: Math.floor(track.duration_ms / 1000),
+                    url: track.preview_url,
+                    cover: track.album.images && track.album.images.length > 0 
+                        ? track.album.images[0].url 
+                        : '/images/default-cover.jpg',
+                    is_spotify_preview: true,
+                    uri: track.uri
+                }));
+                
+                this.currentLikedTrackIndex = 0;
+                this.webPlayerLoadTrack(this.likedTracksPlaylist[0]);
+                this.showWebPlayer();
+            } else {
+                this.showNotification('❌ Aucune recommandation disponible. Essayez de vous reconnecter.', 'error');
+            }
+            
+        } catch (error) {
+            console.error('Erreur lors du chargement des recommandations:', error);
+            if (error.message.includes('401')) {
+                this.showNotification('🔐 Session expirée. Veuillez vous reconnecter.', 'error');
+            } else {
+                this.showNotification('❌ Erreur lors du chargement des recommandations', 'error');
+            }
+        }
     }
 }
 

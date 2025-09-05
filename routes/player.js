@@ -431,6 +431,99 @@ router.get('/liked-tracks/previews', async (req, res) => {
   }
 });
 
+// Route pour obtenir des alternatives aux titres sans aperçu
+router.get('/liked-tracks/alternatives', async (req, res) => {
+  try {
+    const { trackName, artistName } = req.query;
+    
+    if (!trackName || !artistName) {
+      return res.status(400).json({ error: 'Paramètres trackName et artistName requis' });
+    }
+    
+    // Rechercher des versions alternatives du même titre
+    const searchQuery = `track:"${trackName}" artist:"${artistName}"`;
+    const searchResults = await spotifyRequest(req, 'GET', 
+      `/v1/search?q=${encodeURIComponent(searchQuery)}&type=track&limit=10`);
+    
+    // Filtrer les résultats avec aperçu
+    const alternatives = searchResults.tracks.items
+      .filter(track => track.preview_url)
+      .map(track => ({
+        id: track.id,
+        name: track.name,
+        artists: track.artists.map(artist => artist.name).join(', '),
+        album: {
+          name: track.album.name,
+          images: track.album.images
+        },
+        duration_ms: track.duration_ms,
+        preview_url: track.preview_url,
+        uri: track.uri,
+        popularity: track.popularity
+      }))
+      .sort((a, b) => b.popularity - a.popularity); // Trier par popularité
+    
+    res.json({
+      alternatives,
+      total: alternatives.length,
+      original: { trackName, artistName }
+    });
+    
+  } catch (error) {
+    console.error('Erreur lors de la recherche d\'alternatives:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Route pour obtenir des recommandations basées sur les titres likés
+router.get('/liked-tracks/recommendations', async (req, res) => {
+  try {
+    const { limit = 20 } = req.query;
+    
+    // Récupérer quelques titres likés récents comme seeds
+    const recentLiked = await spotifyRequest(req, 'GET', '/me/tracks?limit=5');
+    const seedTracks = recentLiked.items
+      .map(item => item.track.id)
+      .slice(0, 5)
+      .join(',');
+    
+    if (!seedTracks) {
+      return res.json({ tracks: [], message: 'Aucun titre liké trouvé pour les recommandations' });
+    }
+    
+    // Obtenir des recommandations
+    const recommendations = await spotifyRequest(req, 'GET', 
+      `/v1/recommendations?seed_tracks=${seedTracks}&limit=${limit}`);
+    
+    // Filtrer les recommandations avec aperçu
+    const tracksWithPreviews = recommendations.tracks
+      .filter(track => track.preview_url)
+      .map(track => ({
+        id: track.id,
+        name: track.name,
+        artists: track.artists.map(artist => artist.name).join(', '),
+        album: {
+          name: track.album.name,
+          images: track.album.images
+        },
+        duration_ms: track.duration_ms,
+        preview_url: track.preview_url,
+        uri: track.uri,
+        popularity: track.popularity
+      }));
+    
+    res.json({
+      tracks: tracksWithPreviews,
+      total: tracksWithPreviews.length,
+      message: `Recommandations basées sur vos titres likés récents`
+    });
+    
+  } catch (error) {
+    console.error('Erreur lors de la récupération des recommandations:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Route pour obtenir les paroles d'une chanson
 router.get('/lyrics', async (req, res) => {
   try {
