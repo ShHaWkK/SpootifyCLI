@@ -22,6 +22,8 @@ class SpootifyApp {
         this.currentPlayingUri = null;
         this.isPlayingSpotify = false;
         this.likedTracksData = [];
+        this.webPlaybackPlayer = null;
+        this.webPlaybackDeviceId = null;
         
         this.init();
     }
@@ -1796,6 +1798,66 @@ class SpootifyApp {
     }
 
     // Spotify Player Functions
+    async initializeWebPlayback() {
+        if (!window.spotifyToken) {
+            return null;
+        }
+
+        return new Promise((resolve, reject) => {
+            const setupPlayer = () => {
+                if (!window.Spotify) {
+                    setTimeout(setupPlayer, 300);
+                    return;
+                }
+
+                if (this.webPlaybackPlayer) {
+                    resolve(this.webPlaybackDeviceId);
+                    return;
+                }
+
+                this.webPlaybackPlayer = new Spotify.Player({
+                    name: 'Spootify Web Player',
+                    getOAuthToken: cb => cb(window.spotifyToken)
+                });
+
+                this.webPlaybackPlayer.addListener('ready', ({ device_id }) => {
+                    this.webPlaybackDeviceId = device_id;
+                    fetch('/api/player/transfer', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ device_id, play: false })
+                    }).finally(() => resolve(device_id));
+                });
+
+                this.webPlaybackPlayer.addListener('initialization_error', ({ message }) => reject(message));
+                this.webPlaybackPlayer.addListener('authentication_error', ({ message }) => reject(message));
+                this.webPlaybackPlayer.addListener('account_error', ({ message }) => reject(message));
+                this.webPlaybackPlayer.addListener('playback_error', ({ message }) => console.error('Playback error:', message));
+
+                this.webPlaybackPlayer.connect();
+            };
+
+            setupPlayer();
+        });
+    }
+
+    async hasActiveSpotifyDevice() {
+        try {
+            const response = await fetch('/api/player/devices');
+            if (!response.ok) return false;
+            const data = await response.json();
+            if (data.devices && data.devices.some(d => d.is_active)) {
+                return true;
+            }
+
+            const deviceId = await this.initializeWebPlayback();
+            return !!deviceId;
+        } catch (error) {
+            console.error('Erreur lors de la vérification des appareils:', error);
+            return false;
+        }
+    }
+
     async playSpotifyTrack(uri) {
         // Éviter les appels multiples pour le même URI
         if (this.currentPlayingUri === uri && this.isPlayingSpotify) {
@@ -1880,6 +1942,12 @@ class SpootifyApp {
 
     async playLikedTracks() {
         try {
+            if (!(await this.hasActiveSpotifyDevice())) {
+                this.showNotification('🔄 Spotify non disponible. Basculement vers le lecteur web...', 'warning');
+                await this.playLikedTracksWithWebPlayer();
+                return;
+            }
+
             const response = await fetch('/api/player/liked-tracks/play', {
                 method: 'POST',
                 headers: {

@@ -53,10 +53,11 @@ app.get('/', (req, res) => {
       title: 'Spootify Web - Connexion'
     });
   }
-  
+
   res.render('dashboard', {
     title: 'Spootify Web - Dashboard',
-    user: req.session.user || null
+    user: req.session.user || null,
+    spotifyToken: req.session.accessToken || ''
   });
 });
 
